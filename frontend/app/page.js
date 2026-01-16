@@ -166,8 +166,30 @@ export default function Home() {
     return report;
   };
 
-  const handleDownloadReport = () => {
+  const renderMarkdownText = (text) => {
+    if (!text) return <div className="modal-text">No text provided.</div>;
+    const lines = String(text).split("\n").map((line) => line.trim()).filter(Boolean);
+    return (
+      <div className="modal-text">
+        {lines.map((line, idx) => {
+          const headingMatch = line.match(/^#+\s*(.*)$/);
+          if (headingMatch) {
+            return (
+              <div key={idx} className="modal-heading">
+                {headingMatch[1]}
+              </div>
+            );
+          }
+          return <p key={idx}>{line}</p>;
+        })}
+      </div>
+    );
+  };
+
+  const handleDownloadReport = async () => {
     if (!analysisReport) return;
+    const originalDataUrl = await fetchImageDataUrl(imageUrl);
+    const overlayDataUrl = await renderOverlayDataUrl();
     const doc = new jsPDF();
     let y = 14;
     doc.setFontSize(16);
@@ -199,32 +221,138 @@ export default function Home() {
       y += actionLines.length * 5 + 4;
     }
 
+    y = addImagesToPdf(doc, y, originalDataUrl, overlayDataUrl);
+
     doc.setFontSize(12);
     doc.text("Findings:", 14, y);
     y += 6;
-    doc.setFontSize(10);
+    y = renderFindingsTable(doc, y, analysisReport.items || []);
 
-    (analysisReport.items || []).forEach((item, idx) => {
-      const block = [
-        `#${idx + 1} Part: ${item.part || "unknown"}`,
-        `Type: ${item.damage_type || "unknown"} | Severity: ${item.severity || ""}`,
-        `Evidence: ${item.evidence || ""}`,
-        `Recommendation: ${item.repair_recommendation || ""}`,
-        `Estimate (USD): ${item.estimated_repair_cost_usd || ""}`,
-      ];
-      block.forEach((line) => {
-        const lines = doc.splitTextToSize(line, 180);
-        doc.text(lines, 14, y);
-        y += lines.length * 5 + 2;
-      });
-      y += 2;
+    doc.save("damage-report.pdf");
+  };
+
+  const fetchImageDataUrl = async (url) => {
+    if (!url) return null;
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  const renderOverlayDataUrl = async () => {
+    if (!imageUrl) return null;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    const loaded = await new Promise((resolve) => {
+      img.onload = () => resolve(true);
+      img.onerror = () => resolve(false);
+      img.src = imageUrl;
+    });
+    if (!loaded) return null;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0);
+
+    predictions.forEach((pred) => {
+      const [x1, y1, x2, y2] = pred.bbox;
+      const color = colorForLabel(pred.label, pred.class_id);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(2, img.naturalWidth * 0.003);
+      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+    });
+
+    return canvas.toDataURL("image/jpeg", 0.92);
+  };
+
+  const addImagesToPdf = (doc, startY, originalDataUrl, overlayDataUrl) => {
+    let y = startY;
+    const maxWidth = 180;
+    const gap = 6;
+    if (originalDataUrl) {
+      const dims = doc.getImageProperties(originalDataUrl);
+      const height = (dims.height / dims.width) * maxWidth;
+      if (y + height > 270) {
+        doc.addPage();
+        y = 14;
+      }
+      doc.setFontSize(11);
+      doc.text("Original Image", 14, y);
+      y += 4;
+      doc.addImage(originalDataUrl, "JPEG", 14, y, maxWidth, height);
+      y += height + gap;
+    }
+    if (overlayDataUrl) {
+      const dims = doc.getImageProperties(overlayDataUrl);
+      const height = (dims.height / dims.width) * maxWidth;
+      if (y + height > 270) {
+        doc.addPage();
+        y = 14;
+      }
+      doc.setFontSize(11);
+      doc.text("Image with Detections", 14, y);
+      y += 4;
+      doc.addImage(overlayDataUrl, "JPEG", 14, y, maxWidth, height);
+      y += height + gap;
+    }
+    return y;
+  };
+
+  const renderFindingsTable = (doc, startY, items) => {
+    let y = startY;
+    const colX = [14, 70, 120, 155];
+    const rowHeight = 6;
+
+    const ensurePage = () => {
       if (y > 270) {
         doc.addPage();
         y = 14;
       }
+    };
+
+    doc.setFontSize(10);
+    doc.text("Part", colX[0], y);
+    doc.text("Type", colX[1], y);
+    doc.text("Severity", colX[2], y);
+    doc.text("Estimate", colX[3], y);
+    y += rowHeight;
+
+    (items || []).forEach((item) => {
+      const part = String(item.part || item.area || "unknown");
+      const type = String(item.damage_type || "unknown");
+      const severity = String(item.severity || "");
+      const estimate = String(item.estimated_repair_cost_usd || "");
+
+      const partLines = doc.splitTextToSize(part, 50);
+      const typeLines = doc.splitTextToSize(type, 40);
+      const sevLines = doc.splitTextToSize(severity, 30);
+      const estLines = doc.splitTextToSize(estimate, 30);
+      const lines = Math.max(
+        partLines.length,
+        typeLines.length,
+        sevLines.length,
+        estLines.length
+      );
+
+      ensurePage();
+      for (let i = 0; i < lines; i += 1) {
+        doc.text(partLines[i] || "", colX[0], y);
+        doc.text(typeLines[i] || "", colX[1], y);
+        doc.text(sevLines[i] || "", colX[2], y);
+        doc.text(estLines[i] || "", colX[3], y);
+        y += rowHeight;
+        ensurePage();
+      }
+      y += 2;
     });
 
-    doc.save("damage-report.pdf");
+    return y;
   };
 
   const handleUploadToInsurance = () => {
@@ -450,17 +578,15 @@ export default function Home() {
 
             <div className="modal-section">
               <div className="section-title">Summary</div>
-              <div className="modal-text">
-                {analysisReport.summary || analysisReport.raw || "No summary returned."}
-              </div>
+              {renderMarkdownText(
+                analysisReport.summary || analysisReport.raw || "No summary returned."
+              )}
             </div>
 
             {analysisReport.recommended_actions && (
               <div className="modal-section">
                 <div className="section-title">Recommended Actions</div>
-                <div className="modal-text">
-                  {analysisReport.recommended_actions}
-                </div>
+                {renderMarkdownText(analysisReport.recommended_actions)}
               </div>
             )}
 
@@ -509,9 +635,9 @@ export default function Home() {
                       #{idx + 1} {item.part || item.area || "unknown"} —{" "}
                       {item.damage_type} ({item.severity})
                     </div>
-                    <div className="modal-text">
-                      {item.description || item.evidence || "No description returned."}
-                    </div>
+                    {renderMarkdownText(
+                      item.description || item.evidence || "No description returned."
+                    )}
                   </div>
                 ))}
               </div>
