@@ -203,9 +203,10 @@ def predict(
 
 @app.post("/damage-analysis")
 def damage_analysis(
-    payload: DamageAnalysisRequest = Body(default=DamageAnalysisRequest()),
+    payload: DamageAnalysisRequest = Body(default=None),
     image: UploadFile | None = File(default=None),
 ):
+    payload = payload or DamageAnalysisRequest()
     if image is None and not payload.image_name:
         raise HTTPException(status_code=400, detail="Provide image file or image_name.")
 
