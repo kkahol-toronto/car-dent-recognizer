@@ -9,6 +9,11 @@ This repo contains the dataset conversion script and training commands for YOLOv
 - The dataset and training outputs are excluded via `.gitignore`.
 
 ## Usage (on DGX or any machine)
+Install script dependencies:
+```bash
+pip install -r requirements.txt
+```
+
 1. Put the dataset under `data/` with this layout:
    - `data/Car damages dataset/File1/ann` (annotation JSON files)
    - `data/Car damages dataset/File1/img` (images)
@@ -29,3 +34,21 @@ This repo contains the dataset conversion script and training commands for YOLOv
 Notes:
 - The dataset labels are car parts (not damage types).
 - For segmentation later, we can convert polygon masks and use `yolo26n-seg.pt`.
+
+## Damage Segmentation (single class)
+Damage masks are available in `masks_human/`. This script converts mask PNGs into YOLO
+segmentation labels for a single class called `damage`.
+
+1. Convert damage masks to YOLO segmentation:
+   ```bash
+   python scripts/prepare_damage_seg.py
+   ```
+2. Train segmentation:
+   ```bash
+   yolo segment train \
+     data=/path/to/yolo_damage_seg_dataset/data.yaml \
+     model=/path/to/yolo26n-seg.pt \
+     epochs=300 \
+     imgsz=640 \
+     device=0
+   ```
