@@ -260,12 +260,16 @@ def damage_analysis(
             },
         ],
         temperature=0.2,
-        max_tokens=700,
+        max_tokens=1800,
     )
 
     content = response.choices[0].message.content if response.choices else ""
     parsed = _extract_json(content or "")
     if not parsed:
-        return {"raw": content or "", "summary": "", "overall_severity": "", "items": []}
+        return {"raw": content or "", "summary": content or "", "overall_severity": "", "items": []}
+
+    if not parsed.get("summary") and content:
+        parsed["raw"] = content
+        parsed["summary"] = content
 
     return parsed

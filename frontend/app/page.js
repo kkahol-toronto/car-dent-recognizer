@@ -427,7 +427,9 @@ export default function Home() {
 
             <div className="modal-section">
               <div className="section-title">Summary</div>
-              <div className="modal-text">{analysisReport.summary}</div>
+              <div className="modal-text">
+                {analysisReport.summary || analysisReport.raw || "No summary returned."}
+              </div>
             </div>
 
             {analysisReport.recommended_actions && (
@@ -448,14 +450,23 @@ export default function Home() {
                   <span>Severity</span>
                   <span>Estimate</span>
                 </div>
-                {(analysisReport.items || []).map((item, idx) => (
-                  <div key={idx} className="analysis-row">
-                    <span>{item.part || item.area || "unknown"}</span>
-                    <span>{item.damage_type}</span>
-                    <span>{item.severity}</span>
-                    <span>{item.estimated_repair_cost_usd}</span>
+                {(analysisReport.items || []).length ? (
+                  (analysisReport.items || []).map((item, idx) => (
+                    <div key={idx} className="analysis-row">
+                      <span>{item.part || item.area || "unknown"}</span>
+                      <span>{item.damage_type}</span>
+                      <span>{item.severity}</span>
+                      <span>{item.estimated_repair_cost_usd}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="analysis-row">
+                    <span>unknown</span>
+                    <span>unknown</span>
+                    <span>unknown</span>
+                    <span>n/a</span>
                   </div>
-                ))}
+                )}
               </div>
               <div className="modal-findings">
                 {(analysisReport.items || []).map((item, idx) => (
@@ -465,7 +476,7 @@ export default function Home() {
                       {item.damage_type} ({item.severity})
                     </div>
                     <div className="modal-text">
-                      {item.description || item.evidence || ""}
+                      {item.description || item.evidence || "No description returned."}
                     </div>
                   </div>
                 ))}
