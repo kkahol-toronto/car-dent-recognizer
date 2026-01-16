@@ -31,8 +31,12 @@ export default function Home() {
   const [analysisError, setAnalysisError] = useState("");
   const [analysisReport, setAnalysisReport] = useState(null);
   const [showReport, setShowReport] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
   const imgRef = useRef(null);
   const sparkleTimerRef = useRef(null);
+  const chatEndRef = useRef(null);
 
   const currentImage = useMemo(() => {
     if (!images.length) return null;
@@ -47,12 +51,20 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    // Scroll chat to bottom when messages change
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatMessages, chatLoading]);
+
+  useEffect(() => {
     setPredictions([]);
     setSparkles(false);
     setError("");
     setAnalysisReport(null);
     setShowReport(false);
     setAnalysisError("");
+    setChatMessages([]);
     if (sparkleTimerRef.current) {
       clearTimeout(sparkleTimerRef.current);
       sparkleTimerRef.current = null;
@@ -146,10 +158,58 @@ export default function Home() {
       const normalized = normalizeReport(data);
       setAnalysisReport(normalized);
       setShowReport(true);
+      setChatMessages([]); // Reset chat when new report is generated
     } catch (err) {
       setAnalysisError(err.message);
     } finally {
       setAnalysisLoading(false);
+    }
+  };
+
+  const handleSendChat = async () => {
+    if (!chatInput.trim() || !analysisReport || chatLoading) return;
+
+    const userMessage = { role: "user", content: chatInput.trim() };
+    const updatedMessages = [...chatMessages, userMessage];
+    setChatMessages(updatedMessages);
+    setChatInput("");
+    setChatLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image_name: currentImage,
+          report: analysisReport,
+          messages: updatedMessages,
+        }),
+      });
+
+      if (!response.ok) {
+        const detail = await response.json();
+        throw new Error(detail.detail || "Chat failed.");
+      }
+
+      const data = await response.json();
+      setChatMessages([
+        ...updatedMessages,
+        { role: "assistant", content: data.reply },
+      ]);
+    } catch (err) {
+      setChatMessages([
+        ...updatedMessages,
+        { role: "assistant", content: `Error: ${err.message}` },
+      ]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleChatKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendChat();
     }
   };
 
@@ -722,6 +782,53 @@ export default function Home() {
                     )}
                   </div>
                 ))}
+              </div>
+            </div>
+
+            <div className="modal-section chat-section">
+              <div className="section-title">💬 Chat with Report</div>
+              <div className="chat-messages">
+                {chatMessages.length === 0 && (
+                  <div className="chat-placeholder">
+                    Ask questions about the damage report...
+                  </div>
+                )}
+                {chatMessages.map((msg, idx) => (
+                  <div
+                    key={idx}
+                    className={`chat-message ${msg.role}`}
+                  >
+                    <div className="chat-role">
+                      {msg.role === "user" ? "You" : "Assistant"}
+                    </div>
+                    <div className="chat-content">{msg.content}</div>
+                  </div>
+                ))}
+                {chatLoading && (
+                  <div className="chat-message assistant">
+                    <div className="chat-role">Assistant</div>
+                    <div className="chat-content chat-typing">Thinking...</div>
+                  </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+              <div className="chat-input-row">
+                <input
+                  type="text"
+                  className="chat-input"
+                  placeholder="Ask about repairs, costs, priorities..."
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={handleChatKeyDown}
+                  disabled={chatLoading}
+                />
+                <button
+                  className="button chat-send"
+                  onClick={handleSendChat}
+                  disabled={chatLoading || !chatInput.trim()}
+                >
+                  Send
+                </button>
               </div>
             </div>
           </div>

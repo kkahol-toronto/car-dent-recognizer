@@ -174,6 +174,17 @@ class DamageAnalysisRequest(BaseModel):
     parts: list[str] = Field(default_factory=list)
 
 
+class ChatMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    image_name: str
+    report: dict  # The damage analysis report
+    messages: list[ChatMessage]  # Chat history
+
+
 @app.post("/predict")
 def predict(
     task: Literal["parts", "damage"],
@@ -294,3 +305,65 @@ def damage_analysis(payload: DamageAnalysisRequest = Body(default=None)):
         parsed["items"] = filtered
 
     return parsed
+
+
+@app.post("/chat")
+def chat_with_report(payload: ChatRequest = Body(...)):
+    """Chat with the damage analysis report."""
+    if not payload.messages:
+        raise HTTPException(status_code=400, detail="No messages provided.")
+
+    try:
+        client = load_azure_client()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT") or os.getenv("AZURE_OPENAI_MODEL")
+    if not deployment:
+        raise HTTPException(
+            status_code=503,
+            detail="Missing AZURE_OPENAI_DEPLOYMENT in backend/.env",
+        )
+
+    # Build system prompt with report context
+    report_summary = payload.report.get("summary", "No summary available.")
+    report_severity = payload.report.get("overall_severity", "Unknown")
+    report_items = payload.report.get("items", [])
+    
+    items_text = "\n".join(
+        f"- {item.get('part', 'Unknown')}: {item.get('damage_type', 'unknown')} "
+        f"({item.get('severity', 'unknown')}) - Est. ${item.get('estimated_repair_cost_usd', 'N/A')}"
+        for item in report_items
+    )
+
+    system_prompt = f"""You are an expert auto damage assessor assistant. You have analyzed a car image 
+and produced the following damage report:
+
+**Overall Severity:** {report_severity}
+
+**Summary:**
+{report_summary}
+
+**Damage Findings:**
+{items_text if items_text else "No specific damage items identified."}
+
+**Image:** {payload.image_name}
+
+Answer the user's questions about this damage report. Be helpful, specific, and reference 
+the findings above. If asked about costs, provide estimates based on the report. 
+If asked about repair priorities, use your expertise to advise."""
+
+    # Build message history
+    api_messages = [{"role": "system", "content": system_prompt}]
+    for msg in payload.messages:
+        api_messages.append({"role": msg.role, "content": msg.content})
+
+    response = client.chat.completions.create(
+        model=deployment,
+        messages=api_messages,
+        temperature=0.7,
+        max_tokens=1000,
+    )
+
+    assistant_reply = response.choices[0].message.content if response.choices else ""
+    return {"reply": assistant_reply}

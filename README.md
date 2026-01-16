@@ -12,6 +12,7 @@ A full-stack application that uses YOLO-based car part detection combined with A
 
 - 🚗 Detect 21 car part classes with bounding box overlays
 - 🔍 AI-powered damage analysis using Azure OpenAI GPT-4 Vision
+- 💬 Chat with the report — ask follow-up questions about repairs, costs, priorities
 - 📄 Generate detailed PDF reports with original and annotated images
 - ✨ Modern glassmorphic UI with animated sparkle effects
 - 🖼️ Image carousel for easy dataset navigation
@@ -88,6 +89,7 @@ data/
 3. Click **Run Prediction** to detect car parts
 4. Click **Run Damage Analysis** for AI-powered damage assessment
 5. View the report modal and download as PDF
+6. Use the **Chat with Report** section to ask follow-up questions
 
 ## API Endpoints
 
@@ -97,6 +99,7 @@ data/
 | `/images/{filename}` | GET | Serve image file |
 | `/predict` | POST | Run YOLO part detection |
 | `/damage-analysis` | POST | Run Azure OpenAI damage analysis |
+| `/chat` | POST | Chat with the damage report |
 | `/health` | GET | Health check |
 
 ## Training Your Own Model
