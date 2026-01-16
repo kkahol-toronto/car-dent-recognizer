@@ -248,8 +248,8 @@ def damage_analysis(payload: DamageAnalysisRequest = Body(default=None)):
         "  ]\n"
         "}\n"
         f"Only use these part names when possible: {', '.join(parts_list)}.\n"
-        "For each part in the list, assess whether it shows damage and include it if relevant. "
-        "If unsure, set part=unknown and damage_type=unknown."
+        "Assess each part in the list and include it if damage is visible. "
+        "Do not include an 'unknown' item unless there is clear non-part-specific damage."
     )
 
     data_url = _image_to_data_url(pil_image)
@@ -278,5 +278,16 @@ def damage_analysis(payload: DamageAnalysisRequest = Body(default=None)):
     if not parsed.get("summary") and content:
         parsed["raw"] = content
         parsed["summary"] = content
+
+    # Filter out placeholder unknown rows unless they are the only findings.
+    items = parsed.get("items") or []
+    filtered = [
+        item
+        for item in items
+        if (item.get("part") or "").lower() not in {"unknown", "n/a", "none"}
+        or (item.get("damage_type") or "").lower() not in {"unknown", "n/a", "none"}
+    ]
+    if filtered:
+        parsed["items"] = filtered
 
     return parsed
