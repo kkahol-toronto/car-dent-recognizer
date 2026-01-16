@@ -223,12 +223,13 @@ def damage_analysis(
 
     parts_list = _get_parts_list()
     prompt = (
-        "You are an auto damage assessor. Analyze the car image and produce a detailed "
-        "insurance-style damage report. Return JSON only. Use the format:\n"
+        "You are an auto damage assessor. Analyze the car image and produce a very detailed "
+        "insurance-style damage report (aim for 4-5 pages of content). Return JSON only. "
+        "Use the format:\n"
         "{\n"
-        '  "summary": "2-4 sentences, overall assessment",\n'
+        '  "summary": "long multi-paragraph narrative (at least 800-1200 words)",\n'
         '  "overall_severity": "low|medium|high",\n'
-        '  "recommended_actions": "short paragraph",\n'
+        '  "recommended_actions": "multi-paragraph recommendations and next steps",\n'
         '  "items": [\n'
         "    {\n"
         '      "part": "one of the listed parts or unknown",\n'
@@ -236,7 +237,8 @@ def damage_analysis(
         '      "severity": "minor|moderate|severe",\n'
         '      "evidence": "what you see that supports the claim",\n'
         '      "repair_recommendation": "replace|repair|refinish|inspect",\n'
-        '      "estimated_repair_cost_usd": "range string like 200-600"\n'
+        '      "estimated_repair_cost_usd": "range string like 200-600",\n'
+        '      "description": "paragraph describing the damage for this part"\n'
         "    }\n"
         "  ]\n"
         "}\n"

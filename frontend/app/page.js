@@ -30,6 +30,7 @@ export default function Home() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
   const [analysisReport, setAnalysisReport] = useState(null);
+  const [showReport, setShowReport] = useState(false);
   const imgRef = useRef(null);
   const sparkleTimerRef = useRef(null);
 
@@ -50,6 +51,7 @@ export default function Home() {
     setSparkles(false);
     setError("");
     setAnalysisReport(null);
+    setShowReport(false);
     setAnalysisError("");
     if (sparkleTimerRef.current) {
       clearTimeout(sparkleTimerRef.current);
@@ -133,6 +135,7 @@ export default function Home() {
       }
       const data = await response.json();
       setAnalysisReport(data);
+      setShowReport(true);
     } catch (err) {
       setAnalysisError(err.message);
     } finally {
@@ -204,6 +207,8 @@ export default function Home() {
   const handleUploadToInsurance = () => {
     alert("Uploaded to insurance database (demo).");
   };
+
+  const closeReport = () => setShowReport(false);
 
   const overlayBoxes = () => {
     if (!imgRef.current || !predictions.length) return null;
@@ -338,53 +343,25 @@ export default function Home() {
               {analysisError && <div className="meta">{analysisError}</div>}
 
               {analysisReport && (
-                <div className="analysis-card">
-                  <div className="analysis-summary">
-                    <div className="analysis-title">Damage Analysis Report</div>
-                    <div className="meta">{analysisReport.summary}</div>
-                    {analysisReport.overall_severity && (
-                      <div className="analysis-pill">
-                        Severity: {analysisReport.overall_severity}
-                      </div>
-                    )}
-                    {analysisReport.recommended_actions && (
-                      <div className="meta">
-                        {analysisReport.recommended_actions}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="analysis-table">
-                    <div className="analysis-row header">
-                      <span>Part</span>
-                      <span>Type</span>
-                      <span>Severity</span>
-                      <span>Estimate</span>
-                    </div>
-                    {(analysisReport.items || []).map((item, idx) => (
-                      <div key={idx} className="analysis-row">
-                        <span>{item.part}</span>
-                        <span>{item.damage_type}</span>
-                        <span>{item.severity}</span>
-                        <span>{item.estimated_repair_cost_usd}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="analysis-actions">
-                    <button
-                      className="button secondary"
-                      onClick={handleDownloadReport}
-                    >
-                      Download Report
-                    </button>
-                    <button
-                      className="button ghost"
-                      onClick={handleUploadToInsurance}
-                    >
-                      Upload to Insurance DB
-                    </button>
-                  </div>
+                <div className="analysis-actions">
+                  <button
+                    className="button secondary"
+                    onClick={() => setShowReport(true)}
+                  >
+                    View Full Report
+                  </button>
+                  <button
+                    className="button secondary"
+                    onClick={handleDownloadReport}
+                  >
+                    Download Report
+                  </button>
+                  <button
+                    className="button ghost"
+                    onClick={handleUploadToInsurance}
+                  >
+                    Upload to Insurance DB
+                  </button>
                 </div>
               )}
             </div>
@@ -427,6 +404,76 @@ export default function Home() {
           )}
         </div>
       </div>
+
+      {showReport && analysisReport && (
+        <div className="modal-backdrop" onClick={closeReport}>
+          <div
+            className="modal-card"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div>
+                <div className="analysis-title">Damage Analysis Report</div>
+                {analysisReport.overall_severity && (
+                  <div className="analysis-pill">
+                    Severity: {analysisReport.overall_severity}
+                  </div>
+                )}
+              </div>
+              <button className="nav-button" onClick={closeReport}>
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-section">
+              <div className="section-title">Summary</div>
+              <div className="modal-text">{analysisReport.summary}</div>
+            </div>
+
+            {analysisReport.recommended_actions && (
+              <div className="modal-section">
+                <div className="section-title">Recommended Actions</div>
+                <div className="modal-text">
+                  {analysisReport.recommended_actions}
+                </div>
+              </div>
+            )}
+
+            <div className="modal-section">
+              <div className="section-title">Findings</div>
+              <div className="analysis-table">
+                <div className="analysis-row header">
+                  <span>Part</span>
+                  <span>Type</span>
+                  <span>Severity</span>
+                  <span>Estimate</span>
+                </div>
+                {(analysisReport.items || []).map((item, idx) => (
+                  <div key={idx} className="analysis-row">
+                    <span>{item.part || item.area || "unknown"}</span>
+                    <span>{item.damage_type}</span>
+                    <span>{item.severity}</span>
+                    <span>{item.estimated_repair_cost_usd}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="modal-findings">
+                {(analysisReport.items || []).map((item, idx) => (
+                  <div key={idx} className="modal-finding">
+                    <div className="finding-title">
+                      #{idx + 1} {item.part || item.area || "unknown"} —{" "}
+                      {item.damage_type} ({item.severity})
+                    </div>
+                    <div className="modal-text">
+                      {item.description || item.evidence || ""}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
