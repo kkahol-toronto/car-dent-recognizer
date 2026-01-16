@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 
+import { jsPDF } from "jspdf";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
@@ -141,15 +142,63 @@ export default function Home() {
 
   const handleDownloadReport = () => {
     if (!analysisReport) return;
-    const blob = new Blob([JSON.stringify(analysisReport, null, 2)], {
-      type: "application/json",
+    const doc = new jsPDF();
+    let y = 14;
+    doc.setFontSize(16);
+    doc.text("Damage Analysis Report", 14, y);
+    y += 8;
+
+    doc.setFontSize(11);
+    doc.text(`Image: ${currentImage || ""}`, 14, y);
+    y += 8;
+    doc.text(`Overall Severity: ${analysisReport.overall_severity || ""}`, 14, y);
+    y += 8;
+
+    if (analysisReport.summary) {
+      doc.text("Summary:", 14, y);
+      y += 6;
+      const summaryLines = doc.splitTextToSize(analysisReport.summary, 180);
+      doc.text(summaryLines, 14, y);
+      y += summaryLines.length * 5 + 4;
+    }
+
+    if (analysisReport.recommended_actions) {
+      doc.text("Recommended Actions:", 14, y);
+      y += 6;
+      const actionLines = doc.splitTextToSize(
+        analysisReport.recommended_actions,
+        180
+      );
+      doc.text(actionLines, 14, y);
+      y += actionLines.length * 5 + 4;
+    }
+
+    doc.setFontSize(12);
+    doc.text("Findings:", 14, y);
+    y += 6;
+    doc.setFontSize(10);
+
+    (analysisReport.items || []).forEach((item, idx) => {
+      const block = [
+        `#${idx + 1} Part: ${item.part || "unknown"}`,
+        `Type: ${item.damage_type || "unknown"} | Severity: ${item.severity || ""}`,
+        `Evidence: ${item.evidence || ""}`,
+        `Recommendation: ${item.repair_recommendation || ""}`,
+        `Estimate (USD): ${item.estimated_repair_cost_usd || ""}`,
+      ];
+      block.forEach((line) => {
+        const lines = doc.splitTextToSize(line, 180);
+        doc.text(lines, 14, y);
+        y += lines.length * 5 + 2;
+      });
+      y += 2;
+      if (y > 270) {
+        doc.addPage();
+        y = 14;
+      }
     });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "damage-report.json";
-    a.click();
-    URL.revokeObjectURL(url);
+
+    doc.save("damage-report.pdf");
   };
 
   const handleUploadToInsurance = () => {
@@ -298,18 +347,23 @@ export default function Home() {
                         Severity: {analysisReport.overall_severity}
                       </div>
                     )}
+                    {analysisReport.recommended_actions && (
+                      <div className="meta">
+                        {analysisReport.recommended_actions}
+                      </div>
+                    )}
                   </div>
 
                   <div className="analysis-table">
                     <div className="analysis-row header">
-                      <span>Area</span>
+                      <span>Part</span>
                       <span>Type</span>
                       <span>Severity</span>
-                      <span>Estimate (USD)</span>
+                      <span>Estimate</span>
                     </div>
                     {(analysisReport.items || []).map((item, idx) => (
                       <div key={idx} className="analysis-row">
-                        <span>{item.area}</span>
+                        <span>{item.part}</span>
                         <span>{item.damage_type}</span>
                         <span>{item.severity}</span>
                         <span>{item.estimated_repair_cost_usd}</span>
@@ -353,6 +407,12 @@ export default function Home() {
                   });
                 }}
               />
+              {analysisLoading && (
+                <div className="analysis-overlay">
+                  <div className="analysis-wave" />
+                  <div className="analysis-text">Analyzing damage...</div>
+                </div>
+              )}
               {sparkles && (
                 <div className="sparkle-layer">
                   {Array.from({ length: 18 }).map((_, idx) => (

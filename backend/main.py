@@ -20,6 +20,29 @@ IMAGE_DIR = DATA_ROOT / "Car damages dataset" / "File1" / "img"
 MODELS_DIR = Path("/Users/kanavkahol/work/car_parts/models")
 PARTS_MODEL_PATH = MODELS_DIR / "parts_best.pt"
 DAMAGE_MODEL_PATH = MODELS_DIR / "damage_best.pt"
+FALLBACK_PARTS = [
+    "Back-bumper",
+    "Back-door",
+    "Back-wheel",
+    "Back-window",
+    "Back-windshield",
+    "Fender",
+    "Front-bumper",
+    "Front-door",
+    "Front-wheel",
+    "Front-window",
+    "Grille",
+    "Headlight",
+    "Hood",
+    "License-plate",
+    "Mirror",
+    "Quarter-panel",
+    "Rocker-panel",
+    "Roof",
+    "Tail-light",
+    "Trunk",
+    "Windshield",
+]
 
 load_dotenv()
 
@@ -110,6 +133,15 @@ def _run_prediction(model, image: Image.Image):
     return {"width": image.width, "height": image.height, "predictions": predictions}
 
 
+def _get_parts_list():
+    try:
+        model = load_parts_model()
+        names = model.names or {}
+        return [names[i] for i in sorted(names.keys())]
+    except Exception:
+        return FALLBACK_PARTS
+
+
 def _image_to_data_url(image: Image.Image):
     from io import BytesIO
 
@@ -189,23 +221,27 @@ def damage_analysis(
             detail="Missing AZURE_OPENAI_DEPLOYMENT or AZURE_OPENAI_MODEL in backend/.env",
         )
 
+    parts_list = _get_parts_list()
     prompt = (
-        "You are an auto damage assessor. Analyze the car image and produce a concise "
+        "You are an auto damage assessor. Analyze the car image and produce a detailed "
         "insurance-style damage report. Return JSON only. Use the format:\n"
         "{\n"
-        '  "summary": "short paragraph",\n'
+        '  "summary": "2-4 sentences, overall assessment",\n'
         '  "overall_severity": "low|medium|high",\n'
+        '  "recommended_actions": "short paragraph",\n'
         '  "items": [\n'
         "    {\n"
-        '      "area": "part or region",\n'
+        '      "part": "one of the listed parts or unknown",\n'
         '      "damage_type": "scratch|dent|crack|paint|glass|unknown",\n'
         '      "severity": "minor|moderate|severe",\n'
-        '      "notes": "short note",\n'
+        '      "evidence": "what you see that supports the claim",\n'
+        '      "repair_recommendation": "replace|repair|refinish|inspect",\n'
         '      "estimated_repair_cost_usd": "range string like 200-600"\n'
         "    }\n"
         "  ]\n"
         "}\n"
-        "If unsure, use damage_type=unknown and note uncertainty."
+        f"Only use these part names when possible: {', '.join(parts_list)}.\n"
+        "If unsure, set part=unknown and damage_type=unknown."
     )
 
     data_url = _image_to_data_url(pil_image)

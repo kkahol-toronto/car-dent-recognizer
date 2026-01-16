@@ -322,3 +322,48 @@ body {
   gap: 10px;
   flex-wrap: wrap;
 }
+
+.analysis-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  overflow: hidden;
+}
+
+.analysis-wave {
+  position: absolute;
+  width: 160%;
+  height: 160%;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.35), transparent 60%);
+  animation: wave 2.2s linear infinite;
+}
+
+.analysis-text {
+  position: relative;
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #e2e8f0;
+  z-index: 4;
+}
+
+@keyframes wave {
+  0% {
+    transform: translate(-20%, -20%) scale(0.8);
+    opacity: 0.4;
+  }
+  50% {
+    transform: translate(0%, 0%) scale(1.05);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(20%, 20%) scale(0.9);
+    opacity: 0.3;
+  }
+}
