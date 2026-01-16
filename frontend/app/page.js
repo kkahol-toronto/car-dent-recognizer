@@ -4,6 +4,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+const COLOR_PALETTE = [
+  "#22c55e",
+  "#06b6d4",
+  "#a855f7",
+  "#f97316",
+  "#e11d48",
+  "#0ea5e9",
+  "#84cc16",
+  "#f59e0b",
+  "#14b8a6",
+  "#6366f1",
+];
 
 export default function Home() {
   const [task, setTask] = useState("parts");
@@ -12,8 +24,15 @@ export default function Home() {
   const [predictions, setPredictions] = useState([]);
   const [imageMeta, setImageMeta] = useState({ width: 1, height: 1 });
   const [loading, setLoading] = useState(false);
+  const [sparkles, setSparkles] = useState(false);
   const [error, setError] = useState("");
   const imgRef = useRef(null);
+  const sparkleTimerRef = useRef(null);
+
+  const currentImage = useMemo(() => {
+    if (!images.length) return null;
+    return images[Math.max(0, Math.min(index, images.length - 1))];
+  }, [images, index]);
 
   useEffect(() => {
     fetch(`${API_BASE}/images`)
@@ -22,10 +41,15 @@ export default function Home() {
       .catch(() => setError("Failed to load images from backend."));
   }, []);
 
-  const currentImage = useMemo(() => {
-    if (!images.length) return null;
-    return images[Math.max(0, Math.min(index, images.length - 1))];
-  }, [images, index]);
+  useEffect(() => {
+    setPredictions([]);
+    setSparkles(false);
+    setError("");
+    if (sparkleTimerRef.current) {
+      clearTimeout(sparkleTimerRef.current);
+      sparkleTimerRef.current = null;
+    }
+  }, [currentImage, task]);
 
   const imageUrl = currentImage ? `${API_BASE}/images/${currentImage}` : "";
 
@@ -33,10 +57,20 @@ export default function Home() {
   const handleNext = () =>
     setIndex((prev) => Math.min(prev + 1, images.length - 1));
 
+  const colorForLabel = (label, classId) => {
+    const base =
+      typeof classId === "number"
+        ? classId
+        : label.split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+    return COLOR_PALETTE[base % COLOR_PALETTE.length];
+  };
+
   const handlePredict = async () => {
     if (!currentImage) return;
     setLoading(true);
+    setSparkles(true);
     setError("");
+    let nextPayload = null;
     try {
       const response = await fetch(
         `${API_BASE}/predict?task=${task}&image_name=${encodeURIComponent(
@@ -49,12 +83,30 @@ export default function Home() {
         throw new Error(detail.detail || "Prediction failed.");
       }
       const data = await response.json();
-      setPredictions(data.predictions || []);
-      setImageMeta({ width: data.width, height: data.height });
+      nextPayload = {
+        predictions: data.predictions || [],
+        width: data.width,
+        height: data.height,
+      };
     } catch (err) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (sparkleTimerRef.current) {
+        clearTimeout(sparkleTimerRef.current);
+      }
+      const sparkleDuration = Math.floor(1000 + Math.random() * 4000);
+      sparkleTimerRef.current = setTimeout(() => {
+        if (nextPayload) {
+          setPredictions(nextPayload.predictions);
+          setImageMeta({
+            width: nextPayload.width,
+            height: nextPayload.height,
+          });
+        }
+        setSparkles(false);
+        setLoading(false);
+        sparkleTimerRef.current = null;
+      }, sparkleDuration);
     }
   };
 
@@ -67,6 +119,7 @@ export default function Home() {
     const scaleY = displayH / naturalH;
 
     return predictions.map((pred, idx) => {
+      const color = colorForLabel(pred.label, pred.class_id);
       const [x1, y1, x2, y2] = pred.bbox;
       const left = x1 * scaleX;
       const top = y1 * scaleY;
@@ -76,15 +129,34 @@ export default function Home() {
         <div
           key={`${pred.label}-${idx}`}
           className="overlay-box"
-          style={{ left, top, width, height }}
+          style={{
+            left,
+            top,
+            width,
+            height,
+            borderColor: color,
+            background: `${color}22`,
+          }}
         >
-          <div className="overlay-label">
+          <div className="overlay-label" style={{ background: color }}>
             {pred.label} {(pred.confidence * 100).toFixed(1)}%
           </div>
         </div>
       );
     });
   };
+
+  const classSummary = useMemo(() => {
+    const counts = new Map();
+    predictions.forEach((pred) => {
+      counts.set(pred.label, (counts.get(pred.label) || 0) + 1);
+    });
+    return Array.from(counts.entries()).map(([label, count]) => ({
+      label,
+      count,
+      color: colorForLabel(label, null),
+    }));
+  }, [predictions]);
 
   return (
     <div className="page">
@@ -135,6 +207,27 @@ export default function Home() {
             {loading ? "Running..." : "Run Prediction"}
           </button>
 
+          <div className="result-panel">
+            {loading && <div className="meta">Running prediction...</div>}
+            {!loading && !predictions.length && (
+              <div className="meta">No predictions yet.</div>
+            )}
+            {!!classSummary.length && (
+              <div className="result-list">
+                {classSummary.map((item) => (
+                  <div key={item.label} className="result-item">
+                    <span
+                      className="result-dot"
+                      style={{ background: item.color }}
+                    />
+                    <span>{item.label}</span>
+                    <span className="result-count">{item.count}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {error && <div className="meta">{error}</div>}
         </div>
 
@@ -154,6 +247,13 @@ export default function Home() {
                   });
                 }}
               />
+              {sparkles && (
+                <div className="sparkle-layer">
+                  {Array.from({ length: 18 }).map((_, idx) => (
+                    <span key={idx} className="sparkle" />
+                  ))}
+                </div>
+              )}
               {overlayBoxes()}
             </div>
           ) : (

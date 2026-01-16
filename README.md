@@ -61,16 +61,19 @@ Models are expected in `models/`:
 ### Backend (FastAPI)
 ```bash
 cd backend
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+uvicorn main:app --reload --port 8009
 ```
 
 ### Frontend (Next.js)
 ```bash
 cd frontend
 npm install
-NEXT_PUBLIC_API_BASE=http://localhost:8000 npm run dev
+NEXT_PUBLIC_API_BASE=http://localhost:8009 npm run dev -- --port 3009
 ```
 
 The UI lets you choose **parts** or **damage**, select an image from the dataset,
-and see predictions overlaid on the image.
+see predictions overlaid on the image, and preview class counts with animated
+sparkles during inference.
