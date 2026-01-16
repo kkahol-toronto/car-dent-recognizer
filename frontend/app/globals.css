@@ -344,7 +344,7 @@ body {
   width: min(1000px, 95vw);
   max-height: 90vh;
   overflow: auto;
-  padding: 24px;
+  padding: 24px 24px 36px;
   border-radius: 20px;
   background: rgba(15, 23, 42, 0.9);
   border: 1px solid rgba(148, 163, 184, 0.2);
@@ -373,13 +373,23 @@ body {
   font-size: 13px;
   color: #cbd5f5;
   line-height: 1.6;
-  white-space: pre-wrap;
+}
+
+.modal-text p {
+  margin: 0 0 10px;
+}
+
+.modal-heading {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 10px 0 6px;
 }
 
 .modal-findings {
   margin-top: 14px;
   display: grid;
   gap: 12px;
+  padding-bottom: 8px;
 }
 
 .modal-finding {

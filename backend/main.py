@@ -52,7 +52,7 @@ app = FastAPI(title=API_TITLE)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -104,7 +104,10 @@ def list_images():
 
 @app.get("/images/{filename}")
 def get_image(filename: str):
-    image_path = IMAGE_DIR / filename
+    # Decode the filename in case it was URL-encoded
+    from urllib.parse import unquote
+    decoded_filename = unquote(filename)
+    image_path = IMAGE_DIR / decoded_filename
     if not image_path.exists():
         raise HTTPException(status_code=404, detail="Image not found.")
     return FileResponse(image_path)

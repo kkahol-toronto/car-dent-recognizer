@@ -4,7 +4,7 @@
 import { jsPDF } from "jspdf";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8009";
 const COLOR_PALETTE = [
   "#22c55e",
   "#06b6d4",
@@ -19,7 +19,7 @@ const COLOR_PALETTE = [
 ];
 
 export default function Home() {
-  const [task, setTask] = useState("parts");
+  const task = "parts"; // Always use parts detection
   const [images, setImages] = useState([]);
   const [index, setIndex] = useState(0);
   const [predictions, setPredictions] = useState([]);
@@ -59,7 +59,9 @@ export default function Home() {
     }
   }, [currentImage, task]);
 
-  const imageUrl = currentImage ? `${API_BASE}/images/${currentImage}` : "";
+  const imageUrl = currentImage
+    ? `${API_BASE}/images/${encodeURIComponent(currentImage)}`
+    : "";
 
   const handlePrev = () => setIndex((prev) => Math.max(prev - 1, 0));
   const handleNext = () =>
@@ -188,13 +190,18 @@ export default function Home() {
 
   const handleDownloadReport = async () => {
     if (!analysisReport) return;
-    const originalDataUrl = await fetchImageDataUrl(imageUrl);
-    const overlayDataUrl = await renderOverlayDataUrl();
-    const doc = new jsPDF();
-    let y = 14;
-    doc.setFontSize(16);
-    doc.text("Damage Analysis Report", 14, y);
-    y += 8;
+    setAnalysisError("");
+    try {
+      console.log("Generating PDF, fetching images...");
+      const originalDataUrl = await renderOriginalDataUrl();
+      console.log("Original image:", originalDataUrl ? "OK" : "FAILED");
+      const overlayDataUrl = await renderOverlayDataUrl();
+      console.log("Overlay image:", overlayDataUrl ? "OK" : "FAILED");
+      const doc = new jsPDF();
+      let y = 14;
+      doc.setFontSize(16);
+      doc.text("Damage Analysis Report", 14, y);
+      y += 8;
 
     doc.setFontSize(11);
     doc.text(`Image: ${currentImage || ""}`, 14, y);
@@ -228,34 +235,79 @@ export default function Home() {
     y += 6;
     y = renderFindingsTable(doc, y, analysisReport.items || []);
 
-    doc.save("damage-report.pdf");
+      doc.save("damage-report.pdf");
+    } catch (err) {
+      setAnalysisError(
+        err?.message || "Failed to generate the PDF report."
+      );
+    }
   };
 
-  const fetchImageDataUrl = async (url) => {
-    if (!url) return null;
-    const response = await fetch(url);
-    const blob = await response.blob();
-    return await new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.readAsDataURL(blob);
+  const fetchImageAsDataUrl = async () => {
+    if (!imageUrl) {
+      console.warn("No imageUrl for PDF");
+      return null;
+    }
+    try {
+      // Add cache-busting timestamp to bypass browser cache
+      const cacheBuster = `?t=${Date.now()}`;
+      const response = await fetch(imageUrl + cacheBuster, {
+        mode: "cors",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        console.warn("Image fetch failed:", response.status);
+        return null;
+      }
+      const blob = await response.blob();
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = () => {
+          console.warn("FileReader error");
+          resolve(null);
+        };
+        reader.readAsDataURL(blob);
+      });
+    } catch (err) {
+      console.warn("fetchImageAsDataUrl error:", err);
+      return null;
+    }
+  };
+
+  const loadImageFromDataUrl = (dataUrl) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = dataUrl;
     });
+  };
+
+  const renderOriginalDataUrl = async () => {
+    const dataUrl = await fetchImageAsDataUrl();
+    if (!dataUrl) return null;
+    const img = await loadImageFromDataUrl(dataUrl);
+    if (!img) return null;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0);
+    return canvas.toDataURL("image/jpeg", 0.92);
   };
 
   const renderOverlayDataUrl = async () => {
-    if (!imageUrl) return null;
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    const loaded = await new Promise((resolve) => {
-      img.onload = () => resolve(true);
-      img.onerror = () => resolve(false);
-      img.src = imageUrl;
-    });
-    if (!loaded) return null;
+    const dataUrl = await fetchImageAsDataUrl();
+    if (!dataUrl) return null;
+    const img = await loadImageFromDataUrl(dataUrl);
+    if (!img) return null;
 
     const canvas = document.createElement("canvas");
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
     ctx.drawImage(img, 0, 0);
@@ -274,85 +326,127 @@ export default function Home() {
   const addImagesToPdf = (doc, startY, originalDataUrl, overlayDataUrl) => {
     let y = startY;
     const maxWidth = 180;
-    const gap = 6;
+    const gap = 10;
+
     if (originalDataUrl) {
-      const dims = doc.getImageProperties(originalDataUrl);
-      const height = (dims.height / dims.width) * maxWidth;
-      if (y + height > 270) {
-        doc.addPage();
-        y = 14;
+      try {
+        const dims = doc.getImageProperties(originalDataUrl);
+        const height = (dims.height / dims.width) * maxWidth;
+        if (y + height + 10 > 270) {
+          doc.addPage();
+          y = 14;
+        }
+        doc.setFontSize(11);
+        doc.text("Original Image:", 14, y);
+        y += 6;
+        doc.addImage(originalDataUrl, "JPEG", 14, y, maxWidth, height);
+        y += height + gap;
+      } catch (err) {
+        console.warn("Failed to add original image to PDF:", err);
       }
-      doc.setFontSize(11);
-      doc.text("Original Image", 14, y);
-      y += 4;
-      doc.addImage(originalDataUrl, "JPEG", 14, y, maxWidth, height);
-      y += height + gap;
+    } else {
+      console.warn("No originalDataUrl for PDF");
     }
+
     if (overlayDataUrl) {
-      const dims = doc.getImageProperties(overlayDataUrl);
-      const height = (dims.height / dims.width) * maxWidth;
-      if (y + height > 270) {
-        doc.addPage();
-        y = 14;
+      try {
+        const dims = doc.getImageProperties(overlayDataUrl);
+        const height = (dims.height / dims.width) * maxWidth;
+        if (y + height + 10 > 270) {
+          doc.addPage();
+          y = 14;
+        }
+        doc.setFontSize(11);
+        doc.text("Image with Detections:", 14, y);
+        y += 6;
+        doc.addImage(overlayDataUrl, "JPEG", 14, y, maxWidth, height);
+        y += height + gap;
+      } catch (err) {
+        console.warn("Failed to add overlay image to PDF:", err);
       }
-      doc.setFontSize(11);
-      doc.text("Image with Detections", 14, y);
-      y += 4;
-      doc.addImage(overlayDataUrl, "JPEG", 14, y, maxWidth, height);
-      y += height + gap;
+    } else {
+      console.warn("No overlayDataUrl for PDF");
     }
+
     return y;
   };
 
   const renderFindingsTable = (doc, startY, items) => {
     let y = startY;
-    const colX = [14, 70, 120, 155];
-    const rowHeight = 6;
+    const colX = [14, 60, 105, 145];
+    const colW = [46, 45, 40, 45];
+    const tableWidth = 182;
+    const rowHeight = 7;
+    const cellPadding = 2;
 
-    const ensurePage = () => {
-      if (y > 270) {
+    const ensurePage = (neededHeight = rowHeight) => {
+      if (y + neededHeight > 280) {
         doc.addPage();
         y = 14;
       }
     };
 
+    // Draw header row
+    ensurePage(rowHeight + 2);
+    doc.setFillColor(30, 41, 59); // dark slate
+    doc.rect(14, y - 5, tableWidth, rowHeight + 2, "F");
+    doc.setTextColor(255, 255, 255);
     doc.setFontSize(10);
-    doc.text("Part", colX[0], y);
-    doc.text("Type", colX[1], y);
-    doc.text("Severity", colX[2], y);
-    doc.text("Estimate", colX[3], y);
-    y += rowHeight;
+    doc.text("Part", colX[0] + cellPadding, y);
+    doc.text("Type", colX[1] + cellPadding, y);
+    doc.text("Severity", colX[2] + cellPadding, y);
+    doc.text("Estimate (USD)", colX[3] + cellPadding, y);
+    doc.setTextColor(0, 0, 0);
+    y += rowHeight + 2;
 
-    (items || []).forEach((item) => {
-      const part = String(item.part || item.area || "unknown");
-      const type = String(item.damage_type || "unknown");
-      const severity = String(item.severity || "");
-      const estimate = String(item.estimated_repair_cost_usd || "");
+    // Draw data rows
+    (items || []).forEach((item, idx) => {
+      const part = String(item.part || item.area || "—");
+      const type = String(item.damage_type || "—");
+      const severity = String(item.severity || "—");
+      const estimate = String(item.estimated_repair_cost_usd || "—");
 
-      const partLines = doc.splitTextToSize(part, 50);
-      const typeLines = doc.splitTextToSize(type, 40);
-      const sevLines = doc.splitTextToSize(severity, 30);
-      const estLines = doc.splitTextToSize(estimate, 30);
-      const lines = Math.max(
+      const partLines = doc.splitTextToSize(part, colW[0] - 4);
+      const typeLines = doc.splitTextToSize(type, colW[1] - 4);
+      const sevLines = doc.splitTextToSize(severity, colW[2] - 4);
+      const estLines = doc.splitTextToSize(estimate, colW[3] - 4);
+      const lineCount = Math.max(
         partLines.length,
         typeLines.length,
         sevLines.length,
         estLines.length
       );
+      const cellHeight = lineCount * 5 + 4;
 
-      ensurePage();
-      for (let i = 0; i < lines; i += 1) {
-        doc.text(partLines[i] || "", colX[0], y);
-        doc.text(typeLines[i] || "", colX[1], y);
-        doc.text(sevLines[i] || "", colX[2], y);
-        doc.text(estLines[i] || "", colX[3], y);
-        y += rowHeight;
-        ensurePage();
+      ensurePage(cellHeight);
+
+      // Alternating row background
+      if (idx % 2 === 0) {
+        doc.setFillColor(241, 245, 249); // light gray
+        doc.rect(14, y - 4, tableWidth, cellHeight, "F");
       }
-      y += 2;
+
+      // Draw cell borders
+      doc.setDrawColor(148, 163, 184);
+      doc.rect(14, y - 4, tableWidth, cellHeight, "S");
+      doc.line(colX[1], y - 4, colX[1], y - 4 + cellHeight);
+      doc.line(colX[2], y - 4, colX[2], y - 4 + cellHeight);
+      doc.line(colX[3], y - 4, colX[3], y - 4 + cellHeight);
+
+      // Draw text
+      doc.setFontSize(9);
+      for (let i = 0; i < lineCount; i += 1) {
+        const lineY = y + i * 5;
+        doc.text(partLines[i] || "", colX[0] + cellPadding, lineY);
+        doc.text(typeLines[i] || "", colX[1] + cellPadding, lineY);
+        doc.text(sevLines[i] || "", colX[2] + cellPadding, lineY);
+        doc.text(estLines[i] || "", colX[3] + cellPadding, lineY);
+      }
+
+      y += cellHeight;
     });
 
-    return y;
+    return y + 4;
   };
 
   const handleUploadToInsurance = () => {
@@ -415,25 +509,13 @@ export default function Home() {
         <div>
           <div className="title">NeuroEYE Portal</div>
           <div className="meta">
-            Choose a model, select an image, and run recognition.
+            Select an image, detect parts, then run damage analysis.
           </div>
         </div>
       </div>
 
       <div className="grid">
         <div className="glass panel">
-          <div className="control-group">
-            <label>Recognition Mode</label>
-            <select
-              className="select"
-              value={task}
-              onChange={(e) => setTask(e.target.value)}
-            >
-              <option value="parts">Car Parts</option>
-              <option value="damage">Damage</option>
-            </select>
-          </div>
-
           <div className="control-group">
             <label>Carousel</label>
             <div className="carousel">
@@ -481,7 +563,7 @@ export default function Home() {
 
           {error && <div className="meta">{error}</div>}
 
-          {task === "parts" && predictions.length > 0 && (
+          {predictions.length > 0 && (
             <div className="analysis-panel">
               <button
                 className="button secondary"

@@ -12,6 +12,7 @@ data/
 yolo_dataset/
 yolo_damage_seg_dataset/
 runs/
+models/
 
 # OS
 .DS_Store
