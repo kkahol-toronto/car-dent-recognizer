@@ -52,3 +52,25 @@ segmentation labels for a single class called `damage`.
      imgsz=640 \
      device=0
    ```
+
+## Inference API + UI
+Models are expected in `models/`:
+- `models/parts_best.pt` (already seeded from the best parts run)
+- `models/damage_best.pt` (add after training damage segmentation)
+
+### Backend (FastAPI)
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+```
+
+### Frontend (Next.js)
+```bash
+cd frontend
+npm install
+NEXT_PUBLIC_API_BASE=http://localhost:8000 npm run dev
+```
+
+The UI lets you choose **parts** or **damage**, select an image from the dataset,
+and see predictions overlaid on the image.
