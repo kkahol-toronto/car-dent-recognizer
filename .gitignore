@@ -26,3 +26,4 @@ frontend/.next/
 
 # Backend
 backend/__pycache__/
+backend/.env

@@ -26,6 +26,9 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [sparkles, setSparkles] = useState(false);
   const [error, setError] = useState("");
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
+  const [analysisReport, setAnalysisReport] = useState(null);
   const imgRef = useRef(null);
   const sparkleTimerRef = useRef(null);
 
@@ -45,6 +48,8 @@ export default function Home() {
     setPredictions([]);
     setSparkles(false);
     setError("");
+    setAnalysisReport(null);
+    setAnalysisError("");
     if (sparkleTimerRef.current) {
       clearTimeout(sparkleTimerRef.current);
       sparkleTimerRef.current = null;
@@ -108,6 +113,47 @@ export default function Home() {
         sparkleTimerRef.current = null;
       }, sparkleDuration);
     }
+  };
+
+  const handleDamageAnalysis = async () => {
+    if (!currentImage) return;
+    setAnalysisLoading(true);
+    setAnalysisError("");
+    try {
+      const response = await fetch(
+        `${API_BASE}/damage-analysis?image_name=${encodeURIComponent(
+          currentImage
+        )}`,
+        { method: "POST" }
+      );
+      if (!response.ok) {
+        const detail = await response.json();
+        throw new Error(detail.detail || "Damage analysis failed.");
+      }
+      const data = await response.json();
+      setAnalysisReport(data);
+    } catch (err) {
+      setAnalysisError(err.message);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
+  const handleDownloadReport = () => {
+    if (!analysisReport) return;
+    const blob = new Blob([JSON.stringify(analysisReport, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "damage-report.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleUploadToInsurance = () => {
+    alert("Uploaded to insurance database (demo).");
   };
 
   const overlayBoxes = () => {
@@ -229,6 +275,66 @@ export default function Home() {
           </div>
 
           {error && <div className="meta">{error}</div>}
+
+          {task === "parts" && predictions.length > 0 && (
+            <div className="analysis-panel">
+              <button
+                className="button secondary"
+                onClick={handleDamageAnalysis}
+                disabled={analysisLoading}
+              >
+                {analysisLoading ? "Analyzing..." : "Run Damage Analysis"}
+              </button>
+
+              {analysisError && <div className="meta">{analysisError}</div>}
+
+              {analysisReport && (
+                <div className="analysis-card">
+                  <div className="analysis-summary">
+                    <div className="analysis-title">Damage Analysis Report</div>
+                    <div className="meta">{analysisReport.summary}</div>
+                    {analysisReport.overall_severity && (
+                      <div className="analysis-pill">
+                        Severity: {analysisReport.overall_severity}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="analysis-table">
+                    <div className="analysis-row header">
+                      <span>Area</span>
+                      <span>Type</span>
+                      <span>Severity</span>
+                      <span>Estimate (USD)</span>
+                    </div>
+                    {(analysisReport.items || []).map((item, idx) => (
+                      <div key={idx} className="analysis-row">
+                        <span>{item.area}</span>
+                        <span>{item.damage_type}</span>
+                        <span>{item.severity}</span>
+                        <span>{item.estimated_repair_cost_usd}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="analysis-actions">
+                    <button
+                      className="button secondary"
+                      onClick={handleDownloadReport}
+                    >
+                      Download Report
+                    </button>
+                    <button
+                      className="button ghost"
+                      onClick={handleUploadToInsurance}
+                    >
+                      Upload to Insurance DB
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="glass canvas-wrap">

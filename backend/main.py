@@ -1,10 +1,16 @@
+import base64
+import json
+import os
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from openai import AzureOpenAI
 from PIL import Image
 from ultralytics import YOLO
 
@@ -14,6 +20,8 @@ IMAGE_DIR = DATA_ROOT / "Car damages dataset" / "File1" / "img"
 MODELS_DIR = Path("/Users/kanavkahol/work/car_parts/models")
 PARTS_MODEL_PATH = MODELS_DIR / "parts_best.pt"
 DAMAGE_MODEL_PATH = MODELS_DIR / "damage_best.pt"
+
+load_dotenv()
 
 
 app = FastAPI(title=API_TITLE)
@@ -38,6 +46,21 @@ def load_damage_model():
     if not DAMAGE_MODEL_PATH.exists():
         raise FileNotFoundError(f"Missing damage model: {DAMAGE_MODEL_PATH}")
     return YOLO(str(DAMAGE_MODEL_PATH))
+
+
+@lru_cache(maxsize=1)
+def load_azure_client():
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    api_key = os.getenv("AZURE_OPENAI_KEY")
+    if not endpoint or not api_key:
+        raise FileNotFoundError(
+            "Missing AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_KEY in backend/.env"
+        )
+    return AzureOpenAI(
+        api_key=api_key,
+        azure_endpoint=endpoint,
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
+    )
 
 
 @app.get("/health")
@@ -87,6 +110,25 @@ def _run_prediction(model, image: Image.Image):
     return {"width": image.width, "height": image.height, "predictions": predictions}
 
 
+def _image_to_data_url(image: Image.Image):
+    from io import BytesIO
+
+    buffer = BytesIO()
+    image.save(buffer, format="JPEG", quality=90)
+    encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    return f"data:image/jpeg;base64,{encoded}"
+
+
+def _extract_json(text: str):
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}|\[.*\]", text, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+    return None
+
+
 @app.post("/predict")
 def predict(
     task: Literal["parts", "damage"],
@@ -115,3 +157,77 @@ def predict(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     return _run_prediction(model, pil_image)
+
+
+@app.post("/damage-analysis")
+def damage_analysis(
+    image: UploadFile | None = File(default=None),
+    image_name: str | None = None,
+):
+    if image is None and image_name is None:
+        raise HTTPException(status_code=400, detail="Provide image file or image_name.")
+
+    if image is not None:
+        pil_image = Image.open(image.file).convert("RGB")
+    else:
+        image_path = IMAGE_DIR / (image_name or "")
+        if not image_path.exists():
+            raise HTTPException(status_code=404, detail="Image not found.")
+        pil_image = Image.open(image_path).convert("RGB")
+
+    try:
+        client = load_azure_client()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT") or os.getenv(
+        "AZURE_OPENAI_MODEL"
+    )
+    if not deployment:
+        raise HTTPException(
+            status_code=503,
+            detail="Missing AZURE_OPENAI_DEPLOYMENT or AZURE_OPENAI_MODEL in backend/.env",
+        )
+
+    prompt = (
+        "You are an auto damage assessor. Analyze the car image and produce a concise "
+        "insurance-style damage report. Return JSON only. Use the format:\n"
+        "{\n"
+        '  "summary": "short paragraph",\n'
+        '  "overall_severity": "low|medium|high",\n'
+        '  "items": [\n'
+        "    {\n"
+        '      "area": "part or region",\n'
+        '      "damage_type": "scratch|dent|crack|paint|glass|unknown",\n'
+        '      "severity": "minor|moderate|severe",\n'
+        '      "notes": "short note",\n'
+        '      "estimated_repair_cost_usd": "range string like 200-600"\n'
+        "    }\n"
+        "  ]\n"
+        "}\n"
+        "If unsure, use damage_type=unknown and note uncertainty."
+    )
+
+    data_url = _image_to_data_url(pil_image)
+    response = client.chat.completions.create(
+        model=deployment,
+        messages=[
+            {"role": "system", "content": "Return JSON only."},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ],
+            },
+        ],
+        temperature=0.2,
+        max_tokens=700,
+    )
+
+    content = response.choices[0].message.content if response.choices else ""
+    parsed = _extract_json(content or "")
+    if not parsed:
+        return {"raw": content or "", "summary": "", "overall_severity": "", "items": []}
+
+    return parsed

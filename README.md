@@ -67,6 +67,15 @@ pip install -r requirements.txt
 uvicorn main:app --reload --port 8009
 ```
 
+Create `backend/.env` with:
+```
+AZURE_OPENAI_ENDPOINT=...
+AZURE_OPENAI_KEY=...
+AZURE_OPENAI_MODEL=...
+AZURE_OPENAI_DEPLOYMENT=...
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
+```
+
 ### Frontend (Next.js)
 ```bash
 cd frontend
