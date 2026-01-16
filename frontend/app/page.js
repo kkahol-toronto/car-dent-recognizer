@@ -228,21 +228,84 @@ export default function Home() {
     return report;
   };
 
+  const formatInlineMarkdown = (text) => {
+    // Handle **bold** and *italic*
+    const parts = [];
+    let remaining = text;
+    let key = 0;
+
+    while (remaining.length > 0) {
+      // Match **bold**
+      const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
+      // Match *italic* (but not **)
+      const italicMatch = remaining.match(/(?<!\*)\*([^*]+)\*(?!\*)/);
+
+      let nextMatch = null;
+      let matchType = null;
+
+      if (boldMatch && (!italicMatch || boldMatch.index <= italicMatch.index)) {
+        nextMatch = boldMatch;
+        matchType = "bold";
+      } else if (italicMatch) {
+        nextMatch = italicMatch;
+        matchType = "italic";
+      }
+
+      if (nextMatch) {
+        // Add text before the match
+        if (nextMatch.index > 0) {
+          parts.push(<span key={key++}>{remaining.slice(0, nextMatch.index)}</span>);
+        }
+        // Add the formatted text
+        if (matchType === "bold") {
+          parts.push(<strong key={key++}>{nextMatch[1]}</strong>);
+        } else {
+          parts.push(<em key={key++}>{nextMatch[1]}</em>);
+        }
+        remaining = remaining.slice(nextMatch.index + nextMatch[0].length);
+      } else {
+        parts.push(<span key={key++}>{remaining}</span>);
+        break;
+      }
+    }
+
+    return parts.length > 0 ? parts : text;
+  };
+
   const renderMarkdownText = (text) => {
     if (!text) return <div className="modal-text">No text provided.</div>;
-    const lines = String(text).split("\n").map((line) => line.trim()).filter(Boolean);
+    const lines = String(text).split("\n");
     return (
       <div className="modal-text">
         {lines.map((line, idx) => {
-          const headingMatch = line.match(/^#+\s*(.*)$/);
+          const trimmed = line.trim();
+          if (!trimmed) return <div key={idx} className="md-spacer" />;
+
+          // Headings
+          const headingMatch = trimmed.match(/^(#{1,3})\s*(.*)$/);
           if (headingMatch) {
+            const level = headingMatch[1].length;
+            const className = level === 1 ? "md-h1" : level === 2 ? "md-h2" : "md-h3";
             return (
-              <div key={idx} className="modal-heading">
-                {headingMatch[1]}
+              <div key={idx} className={className}>
+                {formatInlineMarkdown(headingMatch[2])}
               </div>
             );
           }
-          return <p key={idx}>{line}</p>;
+
+          // Bullet lists
+          if (trimmed.match(/^[-*]\s+/)) {
+            const content = trimmed.replace(/^[-*]\s+/, "");
+            return (
+              <div key={idx} className="md-list-item">
+                <span className="md-bullet">•</span>
+                <span>{formatInlineMarkdown(content)}</span>
+              </div>
+            );
+          }
+
+          // Regular paragraph
+          return <p key={idx}>{formatInlineMarkdown(trimmed)}</p>;
         })}
       </div>
     );
@@ -801,7 +864,11 @@ export default function Home() {
                     <div className="chat-role">
                       {msg.role === "user" ? "You" : "Assistant"}
                     </div>
-                    <div className="chat-content">{msg.content}</div>
+                    <div className="chat-content">
+                      {msg.role === "assistant"
+                        ? renderMarkdownText(msg.content)
+                        : msg.content}
+                    </div>
                   </div>
                 ))}
                 {chatLoading && (

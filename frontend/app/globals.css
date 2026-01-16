@@ -506,8 +506,54 @@ body {
 
 .chat-content {
   font-size: 13px;
-  line-height: 1.5;
-  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+.chat-content .modal-text {
+  font-size: 13px;
+}
+
+.chat-content .modal-text p {
+  margin: 0 0 8px;
+}
+
+.chat-content .modal-text p:last-child {
+  margin-bottom: 0;
+}
+
+/* Markdown formatting */
+.md-spacer {
+  height: 8px;
+}
+
+.md-h1 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 12px 0 6px;
+}
+
+.md-h2 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 10px 0 5px;
+}
+
+.md-h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 8px 0 4px;
+}
+
+.md-list-item {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0;
+  padding-left: 4px;
+}
+
+.md-bullet {
+  color: #0ea5e9;
+  flex-shrink: 0;
 }
 
 .chat-typing {
