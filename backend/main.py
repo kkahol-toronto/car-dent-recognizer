@@ -202,21 +202,15 @@ def predict(
 
 
 @app.post("/damage-analysis")
-def damage_analysis(
-    payload: DamageAnalysisRequest = Body(default=None),
-    image: UploadFile | None = File(default=None),
-):
+def damage_analysis(payload: DamageAnalysisRequest = Body(default=None)):
     payload = payload or DamageAnalysisRequest()
-    if image is None and not payload.image_name:
-        raise HTTPException(status_code=400, detail="Provide image file or image_name.")
+    if not payload.image_name:
+        raise HTTPException(status_code=400, detail="Provide image_name.")
 
-    if image is not None:
-        pil_image = Image.open(image.file).convert("RGB")
-    else:
-        image_path = IMAGE_DIR / (payload.image_name or "")
-        if not image_path.exists():
-            raise HTTPException(status_code=404, detail="Image not found.")
-        pil_image = Image.open(image_path).convert("RGB")
+    image_path = IMAGE_DIR / (payload.image_name or "")
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Image not found.")
+    pil_image = Image.open(image_path).convert("RGB")
 
     try:
         client = load_azure_client()
