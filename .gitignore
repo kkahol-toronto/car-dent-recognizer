@@ -1,0 +1,20 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# Data and training outputs
+archive.zip
+data/
+yolo_dataset/
+runs/
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
