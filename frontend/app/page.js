@@ -124,23 +124,46 @@ export default function Home() {
     setAnalysisError("");
     try {
       const response = await fetch(
-        `${API_BASE}/damage-analysis?image_name=${encodeURIComponent(
-          currentImage
-        )}`,
-        { method: "POST" }
+        `${API_BASE}/damage-analysis`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            image_name: currentImage,
+            parts: Array.from(
+              new Set(predictions.map((pred) => pred.label).filter(Boolean))
+            ),
+          }),
+        }
       );
       if (!response.ok) {
         const detail = await response.json();
         throw new Error(detail.detail || "Damage analysis failed.");
       }
       const data = await response.json();
-      setAnalysisReport(data);
+      const normalized = normalizeReport(data);
+      setAnalysisReport(normalized);
       setShowReport(true);
     } catch (err) {
       setAnalysisError(err.message);
     } finally {
       setAnalysisLoading(false);
     }
+  };
+
+  const normalizeReport = (report) => {
+    if (!report) return report;
+    if (!report.items && typeof report.summary === "string") {
+      const trimmed = report.summary.trim();
+      if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+        try {
+          return JSON.parse(trimmed);
+        } catch {
+          return report;
+        }
+      }
+    }
+    return report;
   };
 
   const handleDownloadReport = () => {
@@ -453,7 +476,18 @@ export default function Home() {
                 {(analysisReport.items || []).length ? (
                   (analysisReport.items || []).map((item, idx) => (
                     <div key={idx} className="analysis-row">
-                      <span>{item.part || item.area || "unknown"}</span>
+                      <span className="analysis-part">
+                        <span
+                          className="result-dot"
+                          style={{
+                            background: colorForLabel(
+                              item.part || item.area || "unknown",
+                              null
+                            ),
+                          }}
+                        />
+                        {item.part || item.area || "unknown"}
+                      </span>
                       <span>{item.damage_type}</span>
                       <span>{item.severity}</span>
                       <span>{item.estimated_repair_cost_usd}</span>

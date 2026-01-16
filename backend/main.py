@@ -7,12 +7,13 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from openai import AzureOpenAI
 from PIL import Image
 from ultralytics import YOLO
+from pydantic import BaseModel, Field
 
 API_TITLE = "NeuroEYE Portal API"
 DATA_ROOT = Path("/Users/kanavkahol/work/car_parts/data")
@@ -155,10 +156,19 @@ def _extract_json(text: str):
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        match = re.search(r"\{.*\}|\[.*\]", text, re.DOTALL)
+        stripped = text.strip()
+        if stripped.startswith("```"):
+            stripped = re.sub(r"^```(json)?", "", stripped).strip()
+            stripped = stripped.strip("`").strip()
+        match = re.search(r"\{.*\}|\[.*\]", stripped, re.DOTALL)
         if match:
             return json.loads(match.group(0))
     return None
+
+
+class DamageAnalysisRequest(BaseModel):
+    image_name: str | None = None
+    parts: list[str] = Field(default_factory=list)
 
 
 @app.post("/predict")
@@ -193,16 +203,16 @@ def predict(
 
 @app.post("/damage-analysis")
 def damage_analysis(
+    payload: DamageAnalysisRequest = Body(default=DamageAnalysisRequest()),
     image: UploadFile | None = File(default=None),
-    image_name: str | None = None,
 ):
-    if image is None and image_name is None:
+    if image is None and not payload.image_name:
         raise HTTPException(status_code=400, detail="Provide image file or image_name.")
 
     if image is not None:
         pil_image = Image.open(image.file).convert("RGB")
     else:
-        image_path = IMAGE_DIR / (image_name or "")
+        image_path = IMAGE_DIR / (payload.image_name or "")
         if not image_path.exists():
             raise HTTPException(status_code=404, detail="Image not found.")
         pil_image = Image.open(image_path).convert("RGB")
@@ -221,7 +231,7 @@ def damage_analysis(
             detail="Missing AZURE_OPENAI_DEPLOYMENT or AZURE_OPENAI_MODEL in backend/.env",
         )
 
-    parts_list = _get_parts_list()
+    parts_list = payload.parts or _get_parts_list()
     prompt = (
         "You are an auto damage assessor. Analyze the car image and produce a very detailed "
         "insurance-style damage report (aim for 4-5 pages of content). Return JSON only. "
@@ -243,12 +253,14 @@ def damage_analysis(
         "  ]\n"
         "}\n"
         f"Only use these part names when possible: {', '.join(parts_list)}.\n"
+        "For each part in the list, assess whether it shows damage and include it if relevant. "
         "If unsure, set part=unknown and damage_type=unknown."
     )
 
     data_url = _image_to_data_url(pil_image)
     response = client.chat.completions.create(
         model=deployment,
+        response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": "Return JSON only."},
             {
@@ -260,7 +272,7 @@ def damage_analysis(
             },
         ],
         temperature=0.2,
-        max_tokens=1800,
+        max_tokens=3500,
     )
 
     content = response.choices[0].message.content if response.choices else ""
